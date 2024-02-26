@@ -9,6 +9,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Sprout.Exam.Business.Interfaces;
+using Sprout.Exam.Business.Services;
+using Sprout.Exam.DataAccess.Data;
+using Sprout.Exam.DataAccess.Entities;
+using Sprout.Exam.DataAccess.Interfaces;
+using Sprout.Exam.DataAccess.Repositories;
 using Sprout.Exam.WebApp.Data;
 using Sprout.Exam.WebApp.Models;
 
@@ -49,6 +55,10 @@ namespace Sprout.Exam.WebApp
             {
                 configuration.RootPath = "ClientApp/build";
             });
+
+            services.AddSingleton<WebAppContext>();
+            services.AddTransient(typeof(IRepository<Employee>), typeof(EmployeeRepository));
+            services.AddTransient<IEmployeeService, EmployeeService>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

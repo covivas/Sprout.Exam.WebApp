@@ -81,6 +81,9 @@ export class EmployeeCreate extends Component {
         alert("Employee successfully saved");
         this.props.history.push("/employees/index");
     }
+    else if(response.status === 400){
+      alert("Invalid Request.");
+    }
     else{
         alert("There was an error occured.");
     }

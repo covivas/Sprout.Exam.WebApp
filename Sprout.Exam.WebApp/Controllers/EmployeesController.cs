@@ -7,6 +7,13 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Sprout.Exam.Business.DataTransferObjects;
 using Sprout.Exam.Common.Enums;
+using Sprout.Exam.DataAccess.Entities;
+using Sprout.Exam.Business.Interfaces;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Sprout.Exam.WebApp.Models;
+using System.Net;
+using Sprout.Exam.Business.Services;
+using Sprout.Exam.Common.Extensions;
 
 namespace Sprout.Exam.WebApp.Controllers
 {
@@ -15,105 +22,120 @@ namespace Sprout.Exam.WebApp.Controllers
     [ApiController]
     public class EmployeesController : ControllerBase
     {
-
-        /// <summary>
-        /// Refactor this method to go through proper layers and fetch from the DB.
-        /// </summary>
-        /// <returns></returns>
-        [HttpGet]
-        public async Task<IActionResult> Get()
+        private readonly IEmployeeService _employeeService;
+        public EmployeesController(IEmployeeService employeeService)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList);
-            return Ok(result);
+            _employeeService = employeeService;
         }
 
         /// <summary>
-        /// Refactor this method to go through proper layers and fetch from the DB.
+        /// 
+        /// </summary>
+        /// <returns>List of employees that are active</returns>
+        [HttpGet]
+        public async Task<IActionResult> Get()
+        {
+            var employees = await Task.FromResult(await _employeeService.GetAll());
+            return Ok(employees);
+        }
+
+        /// <summary>
+        /// Accepts Employee id
         /// </summary>
         /// <returns></returns>
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == id));
-            return Ok(result);
+            var employee = await Task.FromResult(await _employeeService.GetById(id));
+            if (employee == null) return NotFound();
+            return Ok(employee);
         }
 
         /// <summary>
-        /// Refactor this method to go through proper layers and update changes to the DB.
+        /// Accepts employee Id
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Updated employee record</returns>
         [HttpPut("{id}")]
         public async Task<IActionResult> Put(EditEmployeeDto input)
         {
-            var item = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == input.Id));
-            if (item == null) return NotFound();
-            item.FullName = input.FullName;
-            item.Tin = input.Tin;
-            item.Birthdate = input.Birthdate.ToString("yyyy-MM-dd");
-            item.TypeId = input.TypeId;
-            return Ok(item);
+            if (ModelState.IsValid)
+            {
+                var employee = await Task.FromResult(await _employeeService.Update(input));
+
+                if (employee == 0) return NotFound();
+
+                return Ok(employee);
+            }
+            else
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors)
+                                         .Select(e => e.ErrorMessage)
+                                         .ToList();
+
+                return BadRequest(errors);
+            }
         }
 
         /// <summary>
-        /// Refactor this method to go through proper layers and insert employees to the DB.
+        /// Accepts employee record
         /// </summary>
-        /// <returns></returns>
+        /// <returns>New Employee ID created</returns>
         [HttpPost]
         public async Task<IActionResult> Post(CreateEmployeeDto input)
         {
-
-           var id = await Task.FromResult(StaticEmployees.ResultList.Max(m => m.Id) + 1);
-
-            StaticEmployees.ResultList.Add(new EmployeeDto
+            if (ModelState.IsValid)
             {
-                Birthdate = input.Birthdate.ToString("yyyy-MM-dd"),
-                FullName = input.FullName,
-                Id = id,
-                Tin = input.Tin,
-                TypeId = input.TypeId
-            });
+                var id = await Task.FromResult(await _employeeService.Create(input));
+                return Created($"/api/employees/{id}", id);
+            }
+            else
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors)
+                                         .Select(e => e.ErrorMessage)
+                                         .ToList();
 
-            return Created($"/api/employees/{id}", id);
+                return BadRequest(errors);
+            }
         }
 
 
         /// <summary>
-        /// Refactor this method to go through proper layers and perform soft deletion of an employee to the DB.
+        /// Soft Delete existing Employee
         /// </summary>
-        /// <returns></returns>
+        /// <returns>
+        /// Not Found - when employee Id not exists
+        /// Success - when deleted successfully
+        /// </returns>
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == id));
-            if (result == null) return NotFound();
-            StaticEmployees.ResultList.RemoveAll(m => m.Id == id);
+            var employee = await Task.FromResult(await _employeeService.Delete(id));
+            if (employee == 0) return NotFound();
             return Ok(id);
         }
 
 
 
         /// <summary>
-        /// Refactor this method to go through proper layers and use Factory pattern
+        /// Calculates employee salary based on absent and worked days and employee type
         /// </summary>
-        /// <param name="id"></param>
+        /// <param name="id">Employee Id</param>
         /// <param name="absentDays"></param>
         /// <param name="workedDays"></param>
         /// <returns></returns>
         [HttpPost("{id}/calculate")]
-        public async Task<IActionResult> Calculate(int id,decimal absentDays,decimal workedDays)
+        public async Task<IActionResult> Calculate(SalaryDto salary)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == id));
+            var employee = await Task.FromResult(await _employeeService.GetById(salary.Id));
+            if (employee == null) return NotFound();
+            var type = (EmployeeType)employee.TypeId;
 
-            if (result == null) return NotFound();
-            var type = (EmployeeType) result.TypeId;
             return type switch
             {
                 EmployeeType.Regular =>
-                    //create computation for regular.
-                    Ok(25000),
+                    Ok(new RegularEmployee(20000, salary.AbsentDays).CalculateSalary().ToFormat()),
                 EmployeeType.Contractual =>
-                    //create computation for contractual.
-                    Ok(20000),
+                    Ok(new ContractualEmployee(500, salary.WorkedDays).CalculateSalary().ToFormat()),
                 _ => NotFound("Employee Type not found")
             };
 
